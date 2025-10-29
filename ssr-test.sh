@@ -2,7 +2,7 @@
 # deploy_ssr.sh
 # 一键部署 ShadowsocksR (SSR) 服务端（systemd）
 # 适用于 Debian/Ubuntu 系统；其他 Linux 发行版可能需要调整包管理命令
-# 作者: ChatGPT（根据用户需求改写）
+# 作者: x-aniu
 set -e
 
 RED='\033[0;31m'
