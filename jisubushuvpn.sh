@@ -47,7 +47,7 @@ echo
 echo -e "${GREEN}本脚本基于 eooce 大佬的 Python Xray Argo 项目开发${NC}"
 echo -e "${GREEN}提供极速和完整两种配置模式，简化部署流程${NC}"
 echo -e "${GREEN}支持自动UUID生成、后台运行、节点信息输出${NC}"
-echo -e "${GREEN}默认集成YouTube分流优化，支持交互式查看节点信息${NC}"
+echo -e "${GREEN}支持交互式查看节点信息${NC}"
 echo
 
 echo -e "${YELLOW}请选择操作:${NC}"
@@ -158,7 +158,6 @@ if [ "$MODE_CHOICE" = "1" ]; then
     
     sed -i "s/CFIP = os.environ.get('CFIP', '[^']*')/CFIP = os.environ.get('CFIP', 'joeyblog.net')/" app.py
     echo -e "${GREEN}优选IP已自动设置为: joeyblog.net${NC}"
-    echo -e "${GREEN}YouTube分流已自动配置${NC}"
     
     echo
     echo -e "${GREEN}极速配置完成！正在启动服务...${NC}"
@@ -295,8 +294,6 @@ else
             echo -e "${GREEN}Telegram配置已设置${NC}"
         fi
     fi
-    
-    echo -e "${GREEN}YouTube分流已自动配置${NC}"
 
     echo
     echo -e "${GREEN}完整配置完成！${NC}"
@@ -315,240 +312,6 @@ echo
 echo -e "${BLUE}正在启动服务...${NC}"
 echo -e "${YELLOW}当前工作目录：$(pwd)${NC}"
 echo
-
-# 修改Python文件添加YouTube分流到xray配置，并增加80端口节点
-echo -e "${BLUE}正在添加YouTube分流功能和80端口节点...${NC}"
-cat > youtube_patch.py << 'EOF'
-# 读取app.py文件
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-# 找到原始配置并替换为包含YouTube分流的配置
-old_config = 'config ={"log":{"access":"/dev/null","error":"/dev/null","loglevel":"none",},"inbounds":[{"port":ARGO_PORT ,"protocol":"vless","settings":{"clients":[{"id":UUID ,"flow":"xtls-rprx-vision",},],"decryption":"none","fallbacks":[{"dest":3001 },{"path":"/vless-argo","dest":3002 },{"path":"/vmess-argo","dest":3003 },{"path":"/trojan-argo","dest":3004 },],},"streamSettings":{"network":"tcp",},},{"port":3001 ,"listen":"127.0.0.1","protocol":"vless","settings":{"clients":[{"id":UUID },],"decryption":"none"},"streamSettings":{"network":"ws","security":"none"}},{"port":3002 ,"listen":"127.0.0.1","protocol":"vless","settings":{"clients":[{"id":UUID ,"level":0 }],"decryption":"none"},"streamSettings":{"network":"ws","security":"none","wsSettings":{"path":"/vless-argo"}},"sniffing":{"enabled":True ,"destOverride":["http","tls","quic"],"metadataOnly":False }},{"port":3003 ,"listen":"127.0.0.1","protocol":"vmess","settings":{"clients":[{"id":UUID ,"alterId":0 }]},"streamSettings":{"network":"ws","wsSettings":{"path":"/vmess-argo"}},"sniffing":{"enabled":True ,"destOverride":["http","tls","quic"],"metadataOnly":False }},{"port":3004 ,"listen":"127.0.0.1","protocol":"trojan","settings":{"clients":[{"password":UUID },]},"streamSettings":{"network":"ws","security":"none","wsSettings":{"path":"/trojan-argo"}},"sniffing":{"enabled":True ,"destOverride":["http","tls","quic"],"metadataOnly":False }},],"outbounds":[{"protocol":"freedom","tag": "direct" },{"protocol":"blackhole","tag":"block"}]}'
-
-new_config = '''config = {
-        "log": {
-            "access": "/dev/null",
-            "error": "/dev/null",
-            "loglevel": "none"
-        },
-        "inbounds": [
-            {
-                "port": ARGO_PORT,
-                "protocol": "vless",
-                "settings": {
-                    "clients": [{"id": UUID, "flow": "xtls-rprx-vision"}],
-                    "decryption": "none",
-                    "fallbacks": [
-                        {"dest": 3001},
-                        {"path": "/vless-argo", "dest": 3002},
-                        {"path": "/vmess-argo", "dest": 3003},
-                        {"path": "/trojan-argo", "dest": 3004}
-                    ]
-                },
-                "streamSettings": {"network": "tcp"}
-            },
-            {
-                "port": 3001,
-                "listen": "127.0.0.1",
-                "protocol": "vless",
-                "settings": {
-                    "clients": [{"id": UUID}],
-                    "decryption": "none"
-                },
-                "streamSettings": {"network": "ws", "security": "none"}
-            },
-            {
-                "port": 3002,
-                "listen": "127.0.0.1",
-                "protocol": "vless",
-                "settings": {
-                    "clients": [{"id": UUID, "level": 0}],
-                    "decryption": "none"
-                },
-                "streamSettings": {
-                    "network": "ws",
-                    "security": "none",
-                    "wsSettings": {"path": "/vless-argo"}
-                },
-                "sniffing": {
-                    "enabled": True,
-                    "destOverride": ["http", "tls", "quic"],
-                    "metadataOnly": False
-                }
-            },
-            {
-                "port": 3003,
-                "listen": "127.0.0.1",
-                "protocol": "vmess",
-                "settings": {
-                    "clients": [{"id": UUID, "alterId": 0}]
-                },
-                "streamSettings": {
-                    "network": "ws",
-                    "wsSettings": {"path": "/vmess-argo"}
-                },
-                "sniffing": {
-                    "enabled": True,
-                    "destOverride": ["http", "tls", "quic"],
-                    "metadataOnly": False
-                }
-            },
-            {
-                "port": 3004,
-                "listen": "127.0.0.1",
-                "protocol": "trojan",
-                "settings": {
-                    "clients": [{"password": UUID}]
-                },
-                "streamSettings": {
-                    "network": "ws",
-                    "security": "none",
-                    "wsSettings": {"path": "/trojan-argo"}
-                },
-                "sniffing": {
-                    "enabled": True,
-                    "destOverride": ["http", "tls", "quic"],
-                    "metadataOnly": False
-                }
-            }
-        ],
-        "outbounds": [
-            {"protocol": "freedom", "tag": "direct"},
-            {
-                "protocol": "vmess",
-                "tag": "youtube",
-                "settings": {
-                    "vnext": [{
-                        "address": "172.233.171.224",
-                        "port": 16416,
-                        "users": [{
-                            "id": "8c1b9bea-cb51-43bb-a65c-0af31bbbf145",
-                            "alterId": 0
-                        }]
-                    }]
-                },
-                "streamSettings": {"network": "tcp"}
-            },
-            {"protocol": "blackhole", "tag": "block"}
-        ],
-        "routing": {
-            "domainStrategy": "IPIfNonMatch",
-            "rules": [
-                {
-                    "type": "field",
-                    "domain": [
-                        "youtube.com",
-                        "googlevideo.com",
-                        "ytimg.com",
-                        "gstatic.com",
-                        "googleapis.com",
-                        "ggpht.com",
-                        "googleusercontent.com"
-                    ],
-                    "outboundTag": "youtube"
-                }
-            ]
-        }
-    }'''
-
-# 替换配置
-content = content.replace(old_config, new_config)
-
-# 修改generate_links函数，添加80端口节点
-old_generate_function = '''# Generate links and subscription content
-async def generate_links(argo_domain):
-    meta_info = subprocess.run(['curl', '-s', 'https://speed.cloudflare.com/meta'], capture_output=True, text=True)
-    meta_info = meta_info.stdout.split('"')
-    ISP = f"{meta_info[25]}-{meta_info[17]}".replace(' ', '_').strip()
-
-    time.sleep(2)
-    VMESS = {"v": "2", "ps": f"{NAME}-{ISP}", "add": CFIP, "port": CFPORT, "id": UUID, "aid": "0", "scy": "none", "net": "ws", "type": "none", "host": argo_domain, "path": "/vmess-argo?ed=2560", "tls": "tls", "sni": argo_domain, "alpn": "", "fp": "chrome"}
- 
-    list_txt = f"""
-vless://{UUID}@{CFIP}:{CFPORT}?encryption=none&security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path=%2Fvless-argo%3Fed%3D2560#{NAME}-{ISP}
-  
-vmess://{ base64.b64encode(json.dumps(VMESS).encode('utf-8')).decode('utf-8')}
-
-trojan://{UUID}@{CFIP}:{CFPORT}?security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path=%2Ftrojan-argo%3Fed%3D2560#{NAME}-{ISP}
-    """
-    
-    with open(os.path.join(FILE_PATH, 'list.txt'), 'w', encoding='utf-8') as list_file:
-        list_file.write(list_txt)
-
-    sub_txt = base64.b64encode(list_txt.encode('utf-8')).decode('utf-8')
-    with open(os.path.join(FILE_PATH, 'sub.txt'), 'w', encoding='utf-8') as sub_file:
-        sub_file.write(sub_txt)
-        
-    print(sub_txt)
-    
-    print(f"{FILE_PATH}/sub.txt saved successfully")
-    
-    # Additional actions
-    send_telegram()
-    upload_nodes()
-  
-    return sub_txt'''
-
-new_generate_function = '''# Generate links and subscription content
-async def generate_links(argo_domain):
-    meta_info = subprocess.run(['curl', '-s', 'https://speed.cloudflare.com/meta'], capture_output=True, text=True)
-    meta_info = meta_info.stdout.split('"')
-    ISP = f"{meta_info[25]}-{meta_info[17]}".replace(' ', '_').strip()
-
-    time.sleep(2)
-    
-    # TLS节点 (443端口)
-    VMESS_TLS = {"v": "2", "ps": f"{NAME}-{ISP}-TLS", "add": CFIP, "port": CFPORT, "id": UUID, "aid": "0", "scy": "none", "net": "ws", "type": "none", "host": argo_domain, "path": "/vmess-argo?ed=2560", "tls": "tls", "sni": argo_domain, "alpn": "", "fp": "chrome"}
-    
-    # 无TLS节点 (80端口)
-    VMESS_80 = {"v": "2", "ps": f"{NAME}-{ISP}-80", "add": CFIP, "port": "80", "id": UUID, "aid": "0", "scy": "none", "net": "ws", "type": "none", "host": argo_domain, "path": "/vmess-argo?ed=2560", "tls": "", "sni": "", "alpn": "", "fp": ""}
- 
-    list_txt = f"""
-vless://{UUID}@{CFIP}:{CFPORT}?encryption=none&security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path=%2Fvless-argo%3Fed%3D2560#{NAME}-{ISP}-TLS
-  
-vmess://{ base64.b64encode(json.dumps(VMESS_TLS).encode('utf-8')).decode('utf-8')}
-
-trojan://{UUID}@{CFIP}:{CFPORT}?security=tls&sni={argo_domain}&fp=chrome&type=ws&host={argo_domain}&path=%2Ftrojan-argo%3Fed%3D2560#{NAME}-{ISP}-TLS
-
-vless://{UUID}@{CFIP}:80?encryption=none&security=none&type=ws&host={argo_domain}&path=%2Fvless-argo%3Fed%3D2560#{NAME}-{ISP}-80
-
-vmess://{ base64.b64encode(json.dumps(VMESS_80).encode('utf-8')).decode('utf-8')}
-
-trojan://{UUID}@{CFIP}:80?security=none&type=ws&host={argo_domain}&path=%2Ftrojan-argo%3Fed%3D2560#{NAME}-{ISP}-80
-    """
-    
-    with open(os.path.join(FILE_PATH, 'list.txt'), 'w', encoding='utf-8') as list_file:
-        list_file.write(list_txt)
-
-    sub_txt = base64.b64encode(list_txt.encode('utf-8')).decode('utf-8')
-    with open(os.path.join(FILE_PATH, 'sub.txt'), 'w', encoding='utf-8') as sub_file:
-        sub_file.write(sub_txt)
-        
-    print(sub_txt)
-    
-    print(f"{FILE_PATH}/sub.txt saved successfully")
-    
-    # Additional actions
-    send_telegram()
-    upload_nodes()
-  
-    return sub_txt'''
-
-# 替换generate_links函数
-content = content.replace(old_generate_function, new_generate_function)
-
-# 写回文件
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-
-print("YouTube分流配置和80端口节点已成功添加")
-EOF
-
-python3 youtube_patch.py
-rm youtube_patch.py
-
-echo -e "${GREEN}YouTube分流和80端口节点已集成${NC}"
 
 # 先清理可能存在的进程
 pkill -f "python3 app.py" > /dev/null 2>&1
@@ -717,12 +480,7 @@ $NODE_INFO
 查看日志: tail -f $(pwd)/app.log
 停止服务: kill $APP_PID
 重启服务: kill $APP_PID && nohup python3 app.py > app.log 2>&1 &
-查看进程: ps aux | grep python3
-
-=== 分流说明 ===
-- 已集成YouTube分流优化到xray配置
-- YouTube相关域名自动走专用线路
-- 无需额外配置，透明分流"
+查看进程: ps aux | grep python3"
 
 echo "$SAVE_INFO" > "$NODE_INFO_FILE"
 echo -e "${GREEN}节点信息已保存到 $NODE_INFO_FILE${NC}"
@@ -731,7 +489,6 @@ echo -e "${YELLOW}使用脚本选择选项3可随时查看节点信息${NC}"
 echo -e "${YELLOW}=== 重要提示 ===${NC}"
 echo -e "${GREEN}部署已完成，节点信息已成功生成${NC}"
 echo -e "${GREEN}可以立即使用订阅地址添加到客户端${NC}"
-echo -e "${GREEN}YouTube分流已集成到xray配置，无需额外设置${NC}"
 echo -e "${GREEN}服务将持续在后台运行${NC}"
 echo
 
