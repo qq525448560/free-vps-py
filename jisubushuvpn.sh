@@ -50,46 +50,8 @@ echo -e "${GREEN}支持自动UUID生成、后台运行、节点信息输出${NC}
 echo -e "${GREEN}支持交互式查看节点信息${NC}"
 echo
 
-echo -e "${YELLOW}请选择操作:${NC}"
-echo -e "${BLUE}1) 极速模式 - 只修改UUID并启动${NC}"
-echo -e "${BLUE}2) 完整模式 - 详细配置所有选项${NC}"
-echo -e "${BLUE}3) 查看节点信息 - 显示已保存的节点信息${NC}"
-echo
-read -p "请输入选择 (1/2/3): " MODE_CHOICE
-
-if [ "$MODE_CHOICE" = "3" ]; then
-    if [ -f "$NODE_INFO_FILE" ]; then
-        echo
-        echo -e "${GREEN}========================================${NC}"
-        echo -e "${GREEN}           节点信息查看               ${NC}"
-        echo -e "${GREEN}========================================${NC}"
-        echo
-        cat "$NODE_INFO_FILE"
-        echo
-        echo -e "${YELLOW}提示: 如需重新部署，请重新运行脚本选择模式1或2${NC}"
-    else
-        echo
-        echo -e "${RED}未找到节点信息文件${NC}"
-        echo -e "${YELLOW}请先运行部署脚本生成节点信息${NC}"
-        echo
-        echo -e "${BLUE}是否现在开始部署? (y/n)${NC}"
-        read -p "> " START_DEPLOY
-        if [ "$START_DEPLOY" = "y" ] || [ "$START_DEPLOY" = "Y" ]; then
-            echo -e "${YELLOW}请选择部署模式:${NC}"
-            echo -e "${BLUE}1) 极速模式${NC}"
-            echo -e "${BLUE}2) 完整模式${NC}"
-            read -p "请输入选择 (1/2): " MODE_CHOICE
-        else
-            echo -e "${GREEN}退出脚本${NC}"
-            exit 0
-        fi
-    fi
-    
-    if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
-        echo -e "${GREEN}退出脚本${NC}"
-        exit 0
-    fi
-fi
+MODE_CHOICE="1"
+echo -e "${GREEN}自动选择极速模式${NC}"
 
 echo -e "${BLUE}检查并安装依赖...${NC}"
 if ! command -v python3 &> /dev/null; then
@@ -146,12 +108,8 @@ if [ "$MODE_CHOICE" = "1" ]; then
     echo -e "${BLUE}=== 极速模式 ===${NC}"
     echo
     
-    echo -e "${YELLOW}当前UUID: $(grep "UUID = " app.py | head -1 | cut -d"'" -f2)${NC}"
-    read -p "请输入新的 UUID (留空自动生成): " UUID_INPUT
-    if [ -z "$UUID_INPUT" ]; then
-        UUID_INPUT=$(generate_uuid)
-        echo -e "${GREEN}自动生成UUID: $UUID_INPUT${NC}"
-    fi
+    UUID_INPUT="e258977b-e413-4718-a3af-02d75492c349"
+    echo -e "${GREEN}使用固定UUID: $UUID_INPUT${NC}"
     
     sed -i "s/UUID = os.environ.get('UUID', '[^']*')/UUID = os.environ.get('UUID', '$UUID_INPUT')/" app.py
     echo -e "${GREEN}UUID 已设置为: $UUID_INPUT${NC}"
