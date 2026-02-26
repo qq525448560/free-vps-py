@@ -267,6 +267,46 @@ echo -e "订阅路径: $(grep "SUB_PATH = " app.py | cut -d"'" -f4)"
 echo -e "${YELLOW}========================${NC}"
 echo
 
+# 添加CF节点分流配置（YouTube流量走CF边缘节点）
+echo -e "${BLUE}正在添加CF节点分流配置...${NC}"
+cat > cf_patch.py << 'PYEOF'
+with open('app.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+old_outbounds = '"outbounds":[{"protocol":"freedom","tag": "direct" },{"protocol":"blackhole","tag":"block"}]}'
+
+new_outbounds = (
+    '"outbounds":['
+    '{"protocol":"freedom","tag":"direct"},'
+    '{"protocol":"vless","tag":"cf-hk",'
+    '"settings":{"vnext":[{"address":"hj.xmm1993.top","port":443,'
+    '"users":[{"id":"88d66d66-740f-479d-86e3-29a1dfea6aa8","encryption":"none"}]}]},'
+    '"streamSettings":{"network":"ws","security":"tls",'
+    '"tlsSettings":{"serverName":"sj-8d4.pages.dev","allowInsecure":True,"fingerprint":"chrome"},'
+    '"wsSettings":{"path":"/ads/shop/wenku/proxyip=tw.x9527.xyz?ed=2560",'
+    '"headers":{"Host":"sj-8d4.pages.dev"}}}},'
+    '{"protocol":"blackhole","tag":"block"}],'
+    '"routing":{"domainStrategy":"IPIfNonMatch","rules":[{"type":"field",'
+    '"domain":["youtube.com","googlevideo.com","ytimg.com","gstatic.com",'
+    '"googleapis.com","ggpht.com","googleusercontent.com"],'
+    '"outboundTag":"cf-hk"}]}}'
+)
+
+if old_outbounds in content:
+    content = content.replace(old_outbounds, new_outbounds)
+    print("CF节点分流配置已成功添加")
+else:
+    print("警告: 未找到原始outbounds配置，请检查app.py格式")
+
+with open('app.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+PYEOF
+
+python3 cf_patch.py
+rm cf_patch.py
+echo -e "${GREEN}CF节点分流已集成（YouTube → 香港CF节点）${NC}"
+echo
+
 echo -e "${BLUE}正在启动服务...${NC}"
 echo -e "${YELLOW}当前工作目录：$(pwd)${NC}"
 echo
