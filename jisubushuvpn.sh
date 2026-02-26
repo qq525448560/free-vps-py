@@ -270,61 +270,98 @@ echo
 # 添加CF节点分流配置（YouTube流量走CF边缘节点）
 echo -e "${BLUE}正在添加CF节点分流配置...${NC}"
 cat > cf_patch.py << 'PYEOF'
-with open('app.py', 'r', encoding='utf-8') as f:
-    lines = f.readlines()
+import re, sys
 
-# 找到 config = {...} 所在行（含 "log" 和 "inbounds" 或 "outbounds" 的行）
+with open('app.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+lines = content.splitlines(keepends=True)
+
+CF_OUTBOUND_CODE = """
+# ===== CF节点分流配置（自动注入）=====
+config['outbounds'] = [
+    {'protocol': 'freedom', 'tag': 'direct'},
+    {
+        'protocol': 'vless', 'tag': 'cf-hk',
+        'settings': {'vnext': [{'address': 'hj.xmm1993.top', 'port': 443,
+            'users': [{'id': '88d66d66-740f-479d-86e3-29a1dfea6aa8', 'encryption': 'none'}]}]},
+        'streamSettings': {
+            'network': 'ws', 'security': 'tls',
+            'tlsSettings': {'serverName': 'sj-8d4.pages.dev', 'allowInsecure': True, 'fingerprint': 'chrome'},
+            'wsSettings': {'path': '/ads/shop/wenku/proxyip=tw.x9527.xyz?ed=2560', 'headers': {'Host': 'sj-8d4.pages.dev'}}
+        }
+    },
+    {'protocol': 'blackhole', 'tag': 'block'}
+]
+config['routing'] = {
+    'domainStrategy': 'IPIfNonMatch',
+    'rules': [{'type': 'field',
+        'domain': ['youtube.com', 'googlevideo.com', 'ytimg.com', 'gstatic.com',
+                   'googleapis.com', 'ggpht.com', 'googleusercontent.com'],
+        'outboundTag': 'cf-hk'}]
+}
+# ===== CF节点分流配置结束 =====
+"""
+
 inject_after = -1
+
+# 策略1: 单行 config 含 outbounds（单引号或双引号均可）
 for i, line in enumerate(lines):
-    if 'config' in line and '=' in line and '"outbounds"' in line:
+    if re.search(r'\bconfig\s*=', line) and 'outbounds' in line:
         inject_after = i
+        print(f"[策略1] 在第 {i+1} 行找到 config（含outbounds）")
         break
 
+# 策略2: 单行 config 含 inbounds
 if inject_after == -1:
     for i, line in enumerate(lines):
-        if 'config' in line and '=' in line and '"inbounds"' in line:
+        if re.search(r'\bconfig\s*=', line) and 'inbounds' in line:
             inject_after = i
+            print(f"[策略2] 在第 {i+1} 行找到 config（含inbounds）")
             break
 
-if inject_after >= 0:
-    inject_code = [
-        "\n",
-        "# ===== CF节点分流配置（自动注入）=====\n",
-        "config['outbounds'] = [\n",
-        "    {'protocol': 'freedom', 'tag': 'direct'},\n",
-        "    {\n",
-        "        'protocol': 'vless', 'tag': 'cf-hk',\n",
-        "        'settings': {'vnext': [{\n",
-        "            'address': 'hj.xmm1993.top', 'port': 443,\n",
-        "            'users': [{'id': '88d66d66-740f-479d-86e3-29a1dfea6aa8', 'encryption': 'none'}]\n",
-        "        }]},\n",
-        "        'streamSettings': {\n",
-        "            'network': 'ws', 'security': 'tls',\n",
-        "            'tlsSettings': {'serverName': 'sj-8d4.pages.dev', 'allowInsecure': True, 'fingerprint': 'chrome'},\n",
-        "            'wsSettings': {'path': '/ads/shop/wenku/proxyip=tw.x9527.xyz?ed=2560', 'headers': {'Host': 'sj-8d4.pages.dev'}}\n",
-        "        }\n",
-        "    },\n",
-        "    {'protocol': 'blackhole', 'tag': 'block'}\n",
-        "]\n",
-        "config['routing'] = {\n",
-        "    'domainStrategy': 'IPIfNonMatch',\n",
-        "    'rules': [{\n",
-        "        'type': 'field',\n",
-        "        'domain': ['youtube.com', 'googlevideo.com', 'ytimg.com', 'gstatic.com', 'googleapis.com', 'ggpht.com', 'googleusercontent.com'],\n",
-        "        'outboundTag': 'cf-hk'\n",
-        "    }]\n",
-        "}\n",
-        "# ===== CF节点分流配置结束 =====\n",
-        "\n",
-    ]
-    lines = lines[:inject_after + 1] + inject_code + lines[inject_after + 1:]
-    with open('app.py', 'w', encoding='utf-8') as f:
-        f.writelines(lines)
-    print("CF节点分流配置已成功注入 app.py（第 " + str(inject_after + 1) + " 行后）")
-else:
-    print("错误: 未找到config配置行，请手动检查app.py内容")
-    import sys
+# 策略3: 找到 config = { 开头，追踪大括号深度找到 config 定义结束行
+if inject_after == -1:
+    config_start = -1
+    for i, line in enumerate(lines):
+        if re.search(r'\bconfig\s*=\s*\{', line):
+            config_start = i
+            break
+    if config_start >= 0:
+        depth = 0
+        for i in range(config_start, len(lines)):
+            depth += lines[i].count('{') - lines[i].count('}')
+            if depth == 0 and i > config_start:
+                inject_after = i
+                print(f"[策略3] config 定义结束于第 {i+1} 行")
+                break
+
+# 策略4: 在 json.dump(config 之前注入
+if inject_after == -1:
+    for i, line in enumerate(lines):
+        if 'json.dump' in line and 'config' in line:
+            inject_after = i - 1
+            print(f"[策略4] 在 json.dump 前（第 {i} 行）注入")
+            break
+
+# 策略5: 找到启动 xray 的行之前注入
+if inject_after == -1:
+    for i, line in enumerate(lines):
+        if 'xray' in line.lower() and ('Popen' in line or 'run' in line or 'config' in line):
+            inject_after = i - 1
+            print(f"[策略5] 在 xray 启动前（第 {i} 行）注入")
+            break
+
+if inject_after < 0:
+    print("错误: 所有策略均未能定位 config，输出 app.py 前50行供排查：")
+    for i, line in enumerate(lines[:50]):
+        print(f"{i+1:3d}: {line}", end='')
     sys.exit(1)
+
+lines.insert(inject_after + 1, CF_OUTBOUND_CODE)
+with open('app.py', 'w', encoding='utf-8') as f:
+    f.writelines(lines)
+print(f"CF节点分流配置已成功注入（第 {inject_after+1} 行后）")
 PYEOF
 
 python3 cf_patch.py
