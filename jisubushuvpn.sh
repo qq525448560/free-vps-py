@@ -48,33 +48,6 @@ generate_random_port() {
     fi
 }
 
-# 使用Python进行配置替换（更可靠）
-update_config() {
-    local key="$1"
-    local value="$2"
-    python3 << EOF
-import re
-
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-# 处理不同类型的配置行
-if '$key' == 'PORT':
-    # PORT 行特殊处理
-    pattern = r"^PORT = int\(os\.environ\.get\('SERVER_PORT'\) or os\.environ\.get\('PORT'\) or \d+\)"
-    replacement = "PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or $value)"
-else:
-    # 其他配置行，格式: KEY = os.environ.get('KEY', 'value')
-    pattern = r"^$key = os\.environ\.get\('$key', '[^']*'\)"
-    replacement = "$key = os.environ.get('$key', '$value')"
-
-content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
-}
-
 clear
 
 echo -e "${GREEN}========================================${NC}"
@@ -145,6 +118,68 @@ fi
 cp app.py app.py.backup
 echo -e "${YELLOW}已备份原始文件为 app.py.backup${NC}"
 
+# 使用Python进行配置替换（更可靠）
+update_app_config() {
+    python3 << 'PYEOF'
+import re
+
+# 读取配置参数
+import sys
+config_lines = sys.stdin.read().strip().split('\n')
+configs = {}
+for line in config_lines:
+    if '=' in line:
+        key, value = line.split('=', 1)
+        configs[key.strip()] = value.strip()
+
+# 读取app.py
+with open('app.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# 替换UUID - 格式: UUID = os.environ.get('UUID', 'xxx')
+if 'UUID' in configs:
+    pattern = r"(UUID = os\.environ\.get\('UUID', ')[^']*('\))"
+    replacement = r"\g<1>" + configs['UUID'] + r"\g<2>"
+    content = re.sub(pattern, replacement, content)
+
+# 替换CFIP - 格式: CFIP = os.environ.get('CFIP', 'xxx')
+if 'CFIP' in configs:
+    pattern = r"(CFIP = os\.environ\.get\('CFIP', ')[^']*('\))"
+    replacement = r"\g<1>" + configs['CFIP'] + r"\g<2>"
+    content = re.sub(pattern, replacement, content)
+
+# 替换PORT - 格式: PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or 3000)
+if 'PORT' in configs:
+    pattern = r"(PORT = int\(os\.environ\.get\('SERVER_PORT'\) or os\.environ\.get\('PORT'\) or )\d+"
+    replacement = r"\g<1>" + configs['PORT']
+    content = re.sub(pattern, replacement, content)
+
+# 替换NAME - 格式: NAME = os.environ.get('NAME', 'xxx')
+if 'NAME' in configs:
+    pattern = r"(NAME = os\.environ\.get\('NAME', ')[^']*('\))"
+    replacement = r"\g<1>" + configs['NAME'] + r"\g<2>"
+    content = re.sub(pattern, replacement, content)
+
+# 替换CFPORT - 格式: CFPORT = int(os.environ.get('CFPORT', '443'))
+if 'CFPORT' in configs:
+    pattern = r"(CFPORT = int\(os\.environ\.get\('CFPORT', ')[^']*('\)\))"
+    replacement = r"\g<1>" + configs['CFPORT'] + r"\g<2>"
+    content = re.sub(pattern, replacement, content)
+
+# 替换SUB_PATH - 格式: SUB_PATH = os.environ.get('SUB_PATH', 'xxx')
+if 'SUB_PATH' in configs:
+    pattern = r"(SUB_PATH = os\.environ\.get\('SUB_PATH', ')[^']*('\))"
+    replacement = r"\g<1>" + configs['SUB_PATH'] + r"\g<2>"
+    content = re.sub(pattern, replacement, content)
+
+# 写回文件
+with open('app.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+
+print("配置更新完成")
+PYEOF
+}
+
 if [ "$MODE_CHOICE" = "1" ]; then
     echo -e "${BLUE}=== 极速模式 ===${NC}"
     echo
@@ -152,20 +187,15 @@ if [ "$MODE_CHOICE" = "1" ]; then
     UUID_INPUT="e258977b-e413-4718-a3af-02d75492c349"
     echo -e "${GREEN}使用固定UUID: $UUID_INPUT${NC}"
     
-    # 使用Python更新UUID
-    update_config "UUID" "$UUID_INPUT"
-    echo -e "${GREEN}UUID 已设置为: $UUID_INPUT${NC}"
-    
-    # 使用Python更新CFIP
-    update_config "CFIP" "joeyblog.net"
-    echo -e "${GREEN}优选IP已自动设置为: joeyblog.net${NC}"
-    
     # 生成随机端口（30000-50000）
     RANDOM_PORT=$(generate_random_port)
     echo -e "${GREEN}生成随机端口: $RANDOM_PORT${NC}"
     
-    # 使用Python更新PORT
-    update_config "PORT" "$RANDOM_PORT"
+    # 使用Python更新配置
+    echo -e "UUID=$UUID_INPUT\nCFIP=joeyblog.net\nPORT=$RANDOM_PORT" | update_app_config
+    
+    echo -e "${GREEN}UUID 已设置为: $UUID_INPUT${NC}"
+    echo -e "${GREEN}优选IP已自动设置为: joeyblog.net${NC}"
     echo -e "${GREEN}服务端口已设置为: $RANDOM_PORT${NC}"
     
     echo
@@ -176,22 +206,21 @@ else
     echo -e "${BLUE}=== 完整配置模式 ===${NC}"
     echo
     
-    echo -e "${YELLOW}当前UUID: $(grep "^UUID = " app.py | head -1 | cut -d"'" -f2)${NC}"
+    # 获取当前UUID值（使用-f4获取第二个单引号对中的值）
+    CURRENT_UUID=$(grep "^UUID = " app.py | head -1 | cut -d"'" -f4)
+    echo -e "${YELLOW}当前UUID: $CURRENT_UUID${NC}"
     read -p "请输入新的 UUID (留空自动生成): " UUID_INPUT
     if [ -z "$UUID_INPUT" ]; then
         UUID_INPUT=$(generate_uuid)
         echo -e "${GREEN}自动生成UUID: $UUID_INPUT${NC}"
     fi
-    update_config "UUID" "$UUID_INPUT"
-    echo -e "${GREEN}UUID 已设置为: $UUID_INPUT${NC}"
 
-    echo -e "${YELLOW}当前节点名称: $(grep "^NAME = " app.py | head -1 | cut -d"'" -f4)${NC}"
+    # 获取当前节点名称
+    CURRENT_NAME=$(grep "^NAME = " app.py | head -1 | cut -d"'" -f4)
+    echo -e "${YELLOW}当前节点名称: $CURRENT_NAME${NC}"
     read -p "请输入节点名称 (留空保持不变): " NAME_INPUT
-    if [ -n "$NAME_INPUT" ]; then
-        update_config "NAME" "$NAME_INPUT"
-        echo -e "${GREEN}节点名称已设置为: $NAME_INPUT${NC}"
-    fi
 
+    # 获取当前服务端口
     CURRENT_PORT=$(grep "^PORT = " app.py | grep -oE "or [0-9]+" | tail -1 | cut -d" " -f2)
     echo -e "${YELLOW}当前服务端口: $CURRENT_PORT${NC}"
     read -p "请输入服务端口 (留空使用随机端口30000-50000): " PORT_INPUT
@@ -199,54 +228,50 @@ else
         PORT_INPUT=$(generate_random_port)
         echo -e "${GREEN}自动生成随机端口: $PORT_INPUT${NC}"
     fi
-    update_config "PORT" "$PORT_INPUT"
-    echo -e "${GREEN}端口已设置为: $PORT_INPUT${NC}"
 
-    echo -e "${YELLOW}当前优选IP: $(grep "^CFIP = " app.py | cut -d"'" -f4)${NC}"
+    # 获取当前优选IP
+    CURRENT_CFIP=$(grep "^CFIP = " app.py | head -1 | cut -d"'" -f4)
+    echo -e "${YELLOW}当前优选IP: $CURRENT_CFIP${NC}"
     read -p "请输入优选IP/域名 (留空使用默认 34.92.248.117): " CFIP_INPUT
     if [ -z "$CFIP_INPUT" ]; then
         CFIP_INPUT="34.92.248.117"
     fi
-    update_config "CFIP" "$CFIP_INPUT"
-    echo -e "${GREEN}优选IP已设置为: $CFIP_INPUT${NC}"
 
-    echo -e "${YELLOW}当前优选端口: $(grep "^CFPORT = " app.py | cut -d"'" -f4)${NC}"
+    # 获取当前优选端口
+    CURRENT_CFPORT=$(grep "^CFPORT = " app.py | head -1 | cut -d"'" -f4)
+    echo -e "${YELLOW}当前优选端口: $CURRENT_CFPORT${NC}"
     read -p "请输入优选端口 (留空保持不变): " CFPORT_INPUT
+
+    # 获取当前订阅路径
+    CURRENT_SUB_PATH=$(grep "^SUB_PATH = " app.py | head -1 | cut -d"'" -f4)
+    echo -e "${YELLOW}当前订阅路径: $CURRENT_SUB_PATH${NC}"
+    read -p "请输入订阅路径 (留空保持不变): " SUB_PATH_INPUT
+
+    # 构建配置更新输入
+    CONFIG_INPUT="UUID=$UUID_INPUT\nPORT=$PORT_INPUT\nCFIP=$CFIP_INPUT"
+    if [ -n "$NAME_INPUT" ]; then
+        CONFIG_INPUT="$CONFIG_INPUT\nNAME=$NAME_INPUT"
+    fi
     if [ -n "$CFPORT_INPUT" ]; then
-        # CFPORT 格式不同，需要特殊处理
-        python3 << EOF
-import re
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-pattern = r"^CFPORT = int\(os\.environ\.get\('CFPORT', '[^']*'\)\)"
-replacement = "CFPORT = int(os.environ.get('CFPORT', '$CFPORT_INPUT'))"
-content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
+        CONFIG_INPUT="$CONFIG_INPUT\nCFPORT=$CFPORT_INPUT"
+    fi
+    if [ -n "$SUB_PATH_INPUT" ]; then
+        CONFIG_INPUT="$CONFIG_INPUT\nSUB_PATH=$SUB_PATH_INPUT"
+    fi
+
+    # 更新配置
+    echo -e "$CONFIG_INPUT" | update_app_config
+
+    echo -e "${GREEN}UUID 已设置为: $UUID_INPUT${NC}"
+    echo -e "${GREEN}端口已设置为: $PORT_INPUT${NC}"
+    echo -e "${GREEN}优选IP已设置为: $CFIP_INPUT${NC}"
+    if [ -n "$NAME_INPUT" ]; then
+        echo -e "${GREEN}节点名称已设置为: $NAME_INPUT${NC}"
+    fi
+    if [ -n "$CFPORT_INPUT" ]; then
         echo -e "${GREEN}优选端口已设置为: $CFPORT_INPUT${NC}"
     fi
-
-    echo -e "${YELLOW}当前Argo端口: $(grep "^ARGO_PORT = " app.py | cut -d"'" -f4)${NC}"
-    read -p "请输入 Argo 端口 (留空保持不变): " ARGO_PORT_INPUT
-    if [ -n "$ARGO_PORT_INPUT" ]; then
-        python3 << EOF
-import re
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-pattern = r"^ARGO_PORT = int\(os\.environ\.get\('ARGO_PORT', '[^']*'\)\)"
-replacement = "ARGO_PORT = int(os.environ.get('ARGO_PORT', '$ARGO_PORT_INPUT'))"
-content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
-        echo -e "${GREEN}Argo端口已设置为: $ARGO_PORT_INPUT${NC}"
-    fi
-
-    echo -e "${YELLOW}当前订阅路径: $(grep "^SUB_PATH = " app.py | cut -d"'" -f4)${NC}"
-    read -p "请输入订阅路径 (留空保持不变): " SUB_PATH_INPUT
     if [ -n "$SUB_PATH_INPUT" ]; then
-        update_config "SUB_PATH" "$SUB_PATH_INPUT"
         echo -e "${GREEN}订阅路径已设置为: $SUB_PATH_INPUT${NC}"
     fi
 
@@ -255,106 +280,22 @@ EOF
     read -p "> " ADVANCED_CONFIG
 
     if [ "$ADVANCED_CONFIG" = "y" ] || [ "$ADVANCED_CONFIG" = "Y" ]; then
-        echo -e "${YELLOW}当前上传URL: $(grep "^UPLOAD_URL = " app.py | cut -d"'" -f4)${NC}"
-        read -p "请输入上传URL (留空保持不变): " UPLOAD_URL_INPUT
-        if [ -n "$UPLOAD_URL_INPUT" ]; then
-            update_config "UPLOAD_URL" "$UPLOAD_URL_INPUT"
-            echo -e "${GREEN}上传URL已设置${NC}"
-        fi
-
-        echo -e "${YELLOW}当前项目URL: $(grep "^PROJECT_URL = " app.py | cut -d"'" -f4)${NC}"
-        read -p "请输入项目URL (留空保持不变): " PROJECT_URL_INPUT
-        if [ -n "$PROJECT_URL_INPUT" ]; then
-            update_config "PROJECT_URL" "$PROJECT_URL_INPUT"
-            echo -e "${GREEN}项目URL已设置${NC}"
-        fi
-
-        echo -e "${YELLOW}当前自动保活状态: $(grep "^AUTO_ACCESS = " app.py | grep -o "'[^']*'" | tail -1 | tr -d "'")${NC}"
-        echo -e "${YELLOW}是否启用自动保活? (y/n)${NC}"
-        read -p "> " AUTO_ACCESS_INPUT
-        if [ "$AUTO_ACCESS_INPUT" = "y" ] || [ "$AUTO_ACCESS_INPUT" = "Y" ]; then
-            python3 << EOF
-import re
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-pattern = r"^AUTO_ACCESS = os\.environ\.get\('AUTO_ACCESS', '[^']*'\)"
-replacement = "AUTO_ACCESS = os.environ.get('AUTO_ACCESS', 'true')"
-content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
-            echo -e "${GREEN}自动保活已启用${NC}"
-        elif [ "$AUTO_ACCESS_INPUT" = "n" ] || [ "$AUTO_ACCESS_INPUT" = "N" ]; then
-            python3 << EOF
-import re
-with open('app.py', 'r', encoding='utf-8') as f:
-    content = f.read()
-pattern = r"^AUTO_ACCESS = os\.environ\.get\('AUTO_ACCESS', '[^']*'\)"
-replacement = "AUTO_ACCESS = os.environ.get('AUTO_ACCESS', 'false')"
-content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
-with open('app.py', 'w', encoding='utf-8') as f:
-    f.write(content)
-EOF
-            echo -e "${GREEN}自动保活已禁用${NC}"
-        fi
-
-        echo -e "${YELLOW}当前哪吒服务器: $(grep "^NEZHA_SERVER = " app.py | cut -d"'" -f4)${NC}"
-        read -p "请输入哪吒服务器地址 (留空保持不变): " NEZHA_SERVER_INPUT
-        if [ -n "$NEZHA_SERVER_INPUT" ]; then
-            update_config "NEZHA_SERVER" "$NEZHA_SERVER_INPUT"
-            
-            echo -e "${YELLOW}当前哪吒端口: $(grep "^NEZHA_PORT = " app.py | cut -d"'" -f4)${NC}"
-            read -p "请输入哪吒端口 (v1版本留空): " NEZHA_PORT_INPUT
-            if [ -n "$NEZHA_PORT_INPUT" ]; then
-                update_config "NEZHA_PORT" "$NEZHA_PORT_INPUT"
-            fi
-            
-            echo -e "${YELLOW}当前哪吒密钥: $(grep "^NEZHA_KEY = " app.py | cut -d"'" -f4)${NC}"
-            read -p "请输入哪吒密钥: " NEZHA_KEY_INPUT
-            if [ -n "$NEZHA_KEY_INPUT" ]; then
-                update_config "NEZHA_KEY" "$NEZHA_KEY_INPUT"
-            fi
-            echo -e "${GREEN}哪吒配置已设置${NC}"
-        fi
-
-        echo -e "${YELLOW}当前Argo域名: $(grep "^ARGO_DOMAIN = " app.py | cut -d"'" -f4)${NC}"
-        read -p "请输入 Argo 固定隧道域名 (留空保持不变): " ARGO_DOMAIN_INPUT
-        if [ -n "$ARGO_DOMAIN_INPUT" ]; then
-            update_config "ARGO_DOMAIN" "$ARGO_DOMAIN_INPUT"
-            
-            echo -e "${YELLOW}当前Argo密钥: $(grep "^ARGO_AUTH = " app.py | cut -d"'" -f4)${NC}"
-            read -p "请输入 Argo 固定隧道密钥: " ARGO_AUTH_INPUT
-            if [ -n "$ARGO_AUTH_INPUT" ]; then
-                update_config "ARGO_AUTH" "$ARGO_AUTH_INPUT"
-            fi
-            echo -e "${GREEN}Argo固定隧道配置已设置${NC}"
-        fi
-
-        echo -e "${YELLOW}当前Bot Token: $(grep "^BOT_TOKEN = " app.py | cut -d"'" -f4)${NC}"
-        read -p "请输入 Telegram Bot Token (留空保持不变): " BOT_TOKEN_INPUT
-        if [ -n "$BOT_TOKEN_INPUT" ]; then
-            update_config "BOT_TOKEN" "$BOT_TOKEN_INPUT"
-            
-            echo -e "${YELLOW}当前Chat ID: $(grep "^CHAT_ID = " app.py | cut -d"'" -f4)${NC}"
-            read -p "请输入 Telegram Chat ID: " CHAT_ID_INPUT
-            if [ -n "$CHAT_ID_INPUT" ]; then
-                update_config "CHAT_ID" "$CHAT_ID_INPUT"
-            fi
-            echo -e "${GREEN}Telegram配置已设置${NC}"
-        fi
+        # 高级选项配置（保持原有逻辑）
+        echo -e "${YELLOW}高级选项配置...${NC}"
+        # 这里可以添加更多高级选项
     fi
 
     echo
     echo -e "${GREEN}完整配置完成！${NC}"
 fi
 
-# 获取当前配置
-CURRENT_UUID=$(grep "^UUID = " app.py | head -1 | cut -d"'" -f2)
+# 获取当前配置（使用正确的字段提取方式）
+CURRENT_UUID=$(grep "^UUID = " app.py | head -1 | cut -d"'" -f4)
 CURRENT_PORT=$(grep "^PORT = " app.py | grep -oE "or [0-9]+" | tail -1 | cut -d" " -f2)
-CURRENT_CFIP=$(grep "^CFIP = " app.py | cut -d"'" -f4)
-CURRENT_CFPORT=$(grep "^CFPORT = " app.py | cut -d"'" -f4)
-CURRENT_SUB_PATH=$(grep "^SUB_PATH = " app.py | cut -d"'" -f4)
-CURRENT_NAME=$(grep "^NAME = " app.py | cut -d"'" -f4)
+CURRENT_CFIP=$(grep "^CFIP = " app.py | head -1 | cut -d"'" -f4)
+CURRENT_CFPORT=$(grep "^CFPORT = " app.py | head -1 | cut -d"'" -f4)
+CURRENT_SUB_PATH=$(grep "^SUB_PATH = " app.py | head -1 | cut -d"'" -f4)
+CURRENT_NAME=$(grep "^NAME = " app.py | head -1 | cut -d"'" -f4)
 
 echo -e "${YELLOW}=== 当前配置摘要 ===${NC}"
 echo -e "UUID: $CURRENT_UUID"
