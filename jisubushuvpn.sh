@@ -311,15 +311,16 @@ echo
 echo -e "${BLUE}正在添加CF节点分流配置...${NC}"
 
 cat > cf_patch.py << 'PYEOF'
-import re, sys
+import re
+import sys
 
 with open('app.py', 'r', encoding='utf-8') as f:
     content = f.read()
 
 lines = content.splitlines(keepends=True)
 
-CF_OUTBOUND_CODE = """
-# ===== CF节点分流配置（自动注入）=====
+# CF节点分流配置代码（无前导空格，避免缩进错误）
+CF_OUTBOUND_CODE = '''# ===== CF节点分流配置（自动注入）=====
 config['outbounds'] = [
     {'protocol': 'freedom', 'tag': 'direct'},
     {
@@ -343,7 +344,7 @@ config['routing'] = {
 }
 # ===== CF节点分流配置结束 =====
 
-"""
+'''
 
 inject_after = -1
 
