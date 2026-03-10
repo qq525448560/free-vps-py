@@ -2,7 +2,7 @@
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
@@ -31,6 +31,20 @@ generate_uuid() {
         python3 -c "import uuid; print(str(uuid.uuid4()))"
     else
         hexdump -n 16 -e '4/4 "%08X" 1 "\n"' /dev/urandom | sed 's/\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)\(..\)/\1\2\3\4-\5\6-\7\8-\9\10-\11\12\13\14\15\16/' | tr '[:upper:]' '[:lower:]'
+    fi
+}
+
+# 生成30000-50000之间的随机端口
+generate_random_port() {
+    local min_port=30000
+    local max_port=50000
+    if command -v python3 &> /dev/null; then
+        python3 -c "import random; print(random.randint($min_port, $max_port))"
+    elif command -v shuf &> /dev/null; then
+        shuf -i ${min_port}-${max_port} -n 1
+    else
+        # 使用 $RANDOM 生成随机数
+        echo $(( (RANDOM % (max_port - min_port + 1)) + min_port ))
     fi
 }
 
@@ -117,6 +131,14 @@ if [ "$MODE_CHOICE" = "1" ]; then
     sed -i "s/CFIP = os.environ.get('CFIP', '[^']*')/CFIP = os.environ.get('CFIP', 'joeyblog.net')/" app.py
     echo -e "${GREEN}优选IP已自动设置为: joeyblog.net${NC}"
     
+    # 生成随机端口（30000-50000）
+    RANDOM_PORT=$(generate_random_port)
+    echo -e "${GREEN}生成随机端口: $RANDOM_PORT${NC}"
+    
+    # 设置随机端口
+    sed -i "s/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or [0-9]*)/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or $RANDOM_PORT)/" app.py
+    echo -e "${GREEN}服务端口已设置为: $RANDOM_PORT${NC}"
+    
     echo
     echo -e "${GREEN}极速配置完成！正在启动服务...${NC}"
     echo
@@ -142,11 +164,13 @@ else
     fi
 
     echo -e "${YELLOW}当前服务端口: $(grep "PORT = int" app.py | grep -o "or [0-9]*" | cut -d" " -f2)${NC}"
-    read -p "请输入服务端口 (留空保持不变): " PORT_INPUT
-    if [ -n "$PORT_INPUT" ]; then
-        sed -i "s/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or [0-9]*)/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or $PORT_INPUT)/" app.py
-        echo -e "${GREEN}端口已设置为: $PORT_INPUT${NC}"
+    read -p "请输入服务端口 (留空使用随机端口30000-50000): " PORT_INPUT
+    if [ -z "$PORT_INPUT" ]; then
+        PORT_INPUT=$(generate_random_port)
+        echo -e "${GREEN}自动生成随机端口: $PORT_INPUT${NC}"
     fi
+    sed -i "s/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or [0-9]*)/PORT = int(os.environ.get('SERVER_PORT') or os.environ.get('PORT') or $PORT_INPUT)/" app.py
+    echo -e "${GREEN}端口已设置为: $PORT_INPUT${NC}"
 
     echo -e "${YELLOW}当前优选IP: $(grep "CFIP = " app.py | cut -d"'" -f4)${NC}"
     read -p "请输入优选IP/域名 (留空使用默认 34.92.248.117): " CFIP_INPUT
@@ -269,6 +293,7 @@ echo
 
 # 添加CF节点分流配置（YouTube流量走CF边缘节点）
 echo -e "${BLUE}正在添加CF节点分流配置...${NC}"
+
 cat > cf_patch.py << 'PYEOF'
 import re, sys
 
@@ -301,6 +326,7 @@ config['routing'] = {
         'outboundTag': 'cf-hk'}]
 }
 # ===== CF节点分流配置结束 =====
+
 """
 
 inject_after = -1
@@ -408,7 +434,9 @@ sleep 8
 if ! ps -p "$APP_PID" > /dev/null 2>&1; then
     echo -e "${RED}服务启动失败，请检查日志${NC}"
     echo -e "${YELLOW}查看日志: tail -f app.log${NC}"
-    echo -e "${YELLOW}检查端口占用: netstat -tlnp | grep :3000${NC}"
+    # 获取当前设置的端口
+    CURRENT_PORT=$(grep "PORT = int" app.py | grep -o "or [0-9]*" | cut -d" " -f2)
+    echo -e "${YELLOW}检查端口占用: netstat -tlnp | grep :$CURRENT_PORT${NC}"
     exit 1
 fi
 
